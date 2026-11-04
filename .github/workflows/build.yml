@@ -25,11 +25,11 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
 
-      - name: Build APK (Debug)
-        run: flutter build apk --debug
+      - name: Build APK (Release, split per CPU)
+        run: flutter build apk --release --split-per-abi
 
-      - name: Upload APK
+      - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: mytel-app-debug
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: mytel-app-release
+          path: build/app/outputs/flutter-apk/*-release.apk

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/account_summary.dart';
 
 /// Simple result wrapper so screens can show server messages
 /// and react to an expired session WITHOUT the app logging out by itself.
@@ -171,6 +172,84 @@ class ApiService {
         unauthorized: _isUnauthorized(e),
       );
     }
+  }
+
+  // ---------------------------------------------------- balance / min / MB
+
+  static final RegExp _uuid = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+
+  /// Finds the account UUID inside one item of the account list.
+  String? _findId(Map m) {
+    for (final k in ['id', 'accountId', 'account_id', 'subscriberId', 'subId']) {
+      final v = m[k];
+      if (v is String && _uuid.hasMatch(v)) return v;
+    }
+    for (final v in m.values) {
+      if (v is String && _uuid.hasMatch(v)) return v;
+    }
+    for (final v in m.values) {
+      if (v is Map) {
+        final r = _findId(v);
+        if (r != null) return r;
+      }
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> _getBalanceDetail(String id) async {
+    try {
+      final response = await _dio.get(
+        '/account-detail/api/v1.1/individual/$id/account-main',
+        queryParameters: {'language': 'EN'},
+      );
+      final body = response.data;
+      if (body is Map && body['errorCode'] == 0 && body['result'] is Map) {
+        return Map<String, dynamic>.from(body['result']);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Every number on the login with Balance, Promo, Minutes and Data (MB).
+  Future<ApiResult<List<AccountSummary>>> getAccountSummaries(
+      String phoneNumber) async {
+    final res = await getAccountDetails(phoneNumber);
+    if (!res.ok) {
+      return ApiResult(
+          ok: false, message: res.message, unauthorized: res.unauthorized);
+    }
+
+    final list = (res.data?['result'] as List?) ?? const [];
+    final summaries = await Future.wait(list.map((item) async {
+      final map =
+          item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{};
+      final msisdn = (map['msisdn'] ?? phoneNumber).toString();
+      final id = _findId(map);
+
+      Stat? main = Stat.from(map['mainBalance']?['main']);
+      Stat? promo, voice, data;
+
+      if (id != null) {
+        final d = await _getBalanceDetail(id);
+        if (d != null) {
+          main = Stat.from(d['main']) ?? main;
+          promo = Stat.from(d['promo']);
+          voice = Stat.from(d['voice']);
+          data = Stat.from(d['data']);
+        }
+      }
+      return AccountSummary(
+        msisdn: msisdn,
+        id: id,
+        main: main,
+        promo: promo,
+        voice: voice,
+        data: data,
+      );
+    }).toList());
+
+    return ApiResult(ok: true, data: summaries);
   }
 
   // ---------------------------------------------------------------- YouTube

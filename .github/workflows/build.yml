@@ -29,9 +29,9 @@ jobs:
       - name: Build APK (Debug)
         run: flutter build apk --debug
 
-      # 5. Build ပြီးလာတဲ့ APK ကို Upload လုပ်ခြင်း
+      # 5. Build ပြီးလာတဲ့ APK ကို Upload လုပ်ခြင်း (v3 က v4 ကို ပြောင်းပေးထားပီ)
       - name: Upload APK
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: mytel-app-debug
           path: build/app/outputs/flutter-apk/app-debug.apk

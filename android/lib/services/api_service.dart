@@ -1,91 +1,103 @@
-import 'package:dio/dio.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/material.dart';
+import '../services/api_service.dart';
+import 'home_screen.dart';
 
-class ApiService {
-  final Dio _dio;
-  static const String _tokenKey = 'mytel_access_token';
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
 
-  ApiService() {
-    _dio = Dio(BaseOptions(
-      baseUrl: 'https://apis.mytel.com.mm',
-      headers: {
-        'Content-Type': 'application/json',
-        // Log တွေအတိုင်း ထည့်ပေးထားပါသည်
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36',
-        'Referer': 'https://mytel.com.mm/#/',
-        // API Key လိုအပ်ရင် အောက်ပါအတိုင်း ထည့်နိုင်ပါသည်
-        // 'X-API-Key': 'YOUR_API_KEY_HERE', 
-      },
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-    ));
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _api = ApiService();
+  final _phone = TextEditingController();
+  final _otp = TextEditingController();
+  bool _otpSent = false;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _phone.dispose();
+    _otp.dispose();
+    super.dispose();
   }
 
-  Future<void> saveToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
-    _dio.options.headers['Authorization'] = 'Bearer $token';
+  void _msg(String t) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+
+  Future<void> _sendOtp() async {
+    setState(() => _busy = true);
+    final ok = await _api.sendOtp(_phone.text.trim());
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _otpSent = ok;
+    });
+    if (!ok) _msg('OTP ပို့မရပါ');
   }
 
-  Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(_tokenKey);
-    if (token != null) {
-      _dio.options.headers['Authorization'] = 'Bearer $token';
-    }
-    return token;
-  }
-
-  Future<bool> sendOtp(String phoneNumber) async {
-    try {
-      final response = await _dio.get(
-        '/myid/authen/v1.0/login/method/otp/get-otp',
-        queryParameters: {'phoneNumber': phoneNumber},
+  Future<void> _verify() async {
+    setState(() => _busy = true);
+    final phone = _phone.text.trim();
+    final ok = await _api.validateOtp(phone, _otp.text.trim());
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (ok) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => HomeScreen(phoneNumber: phone)),
       );
-      return response.statusCode == 200;
-    } catch (e) {
-      return false;
+    } else {
+      _msg('OTP မမှန်ပါ');
     }
   }
 
-  Future<bool> validateOtp(String phoneNumber, String otp) async {
-    try {
-      final response = await _dio.post(
-        '/myid/authen/v1.0/login/method/otp/validate-otp',
-        data: {
-          'phoneNumber': phoneNumber,
-          'password': otp, 
-          'version': '8.1', 
-        },
-      );
-      
-      if (response.statusCode == 200 && response.data['errorCode'] == 200) {
-        final token = response.data['result']['access_token'];
-        await saveToken(token);
-        return true;
-      }
-      return false;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  Future<Map<String, dynamic>?> getAccountDetails(String phoneNumber) async {
-    try {
-      final token = await getToken();
-      if (token == null) return null;
-
-      final response = await _dio.get(
-        '/account-detail/api/v1.2/individual/account-main',
-        queryParameters: {'isdn': phoneNumber, 'language': 'MU'},
-      );
-
-      if (response.statusCode == 200) {
-        return response.data;
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Mytel Login')),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextField(
+              controller: _phone,
+              enabled: !_otpSent,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Phone Number',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (_otpSent) ...[
+              const SizedBox(height: 16),
+              TextField(
+                controller: _otp,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'OTP',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _busy ? null : (_otpSent ? _verify : _sendOtp),
+                child: _busy
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(_otpSent ? 'Verify' : 'Send OTP'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

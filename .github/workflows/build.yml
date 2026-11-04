@@ -3,33 +3,33 @@ name: Build Flutter APK
 on:
   push:
     branches:
-      - main  # main branch မှာ Code တင်တိုင်း အလိုအလျောက် Build လုပ်မည်
+      - main
 
 jobs:
   build:
-    runs-on: ubuntu-latest  # Ubuntu Server မှာ Run လုပ်မည်
+    runs-on: ubuntu-latest
 
     steps:
-      # 1. Code ကို Checkout လုပ်ခြင်း
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # 2. Flutter Environment Setup လုပ်ခြင်း
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.0'  # သုံးနေတဲ့ Version ထည့်ပါ
           channel: 'stable'
 
-      # 3. Package တွေ Download လုပ်ခြင်း
+      - name: Generate Android project
+        run: |
+          rm -rf android
+          flutter create --platforms=android --org com.example .
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+
       - name: Get Dependencies
         run: flutter pub get
 
-      # 4. APK Build လုပ်ခြင်း (Debug Mode - Password မလိုဘူး)
       - name: Build APK (Debug)
         run: flutter build apk --debug
 
-      # 5. Build ပြီးလာတဲ့ APK ကို Upload လုပ်ခြင်း (v3 က v4 ကို ပြောင်းပေးထားပီ)
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

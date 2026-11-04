@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../models/account_summary.dart';
 import '../services/api_service.dart';
 import '../theme.dart';
+import '../widgets/account_card.dart';
 import '../widgets/gradient_button.dart';
 
 class YoutubeScreen extends StatefulWidget {
@@ -19,6 +21,33 @@ class YoutubeScreen extends StatefulWidget {
 class _YoutubeScreenState extends State<YoutubeScreen> {
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
+  bool _statsLoading = true;
+  AccountSummary? _summary;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+  }
+
+  Future<void> _loadStats() async {
+    if (mounted) setState(() => _statsLoading = true);
+    final res = await _apiService.getAccountSummaries(widget.phoneNumber);
+    if (!mounted) return;
+
+    AccountSummary? mine;
+    final list = res.data ?? const <AccountSummary>[];
+    final me = ApiService.toMsisdn(widget.phoneNumber);
+    for (final a in list) {
+      if (ApiService.toMsisdn(a.msisdn) == me) mine = a;
+    }
+    mine ??= list.isNotEmpty ? list.first : null;
+
+    setState(() {
+      _summary = mine;
+      _statsLoading = false;
+    });
+  }
 
   Future<void> _buy() async {
     final confirmed = await showDialog<bool>(
@@ -53,6 +82,8 @@ class _YoutubeScreenState extends State<YoutubeScreen> {
       );
       return;
     }
+
+    if (res.ok) _loadStats(); // refresh Balance / min / MB after buying
 
     _showResult(
       ok: res.ok,
@@ -95,9 +126,14 @@ class _YoutubeScreenState extends State<YoutubeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
+    return RefreshIndicator(
+      onRefresh: _loadStats,
+      child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(20),
       children: [
+        MiniStats(summary: _summary, loading: _statsLoading),
+        const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
@@ -187,6 +223,7 @@ class _YoutubeScreenState extends State<YoutubeScreen> {
           onPressed: _buy,
         ),
       ],
+    ),
     );
   }
 

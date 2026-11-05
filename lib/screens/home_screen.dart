@@ -21,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final ApiService _apiService = ApiService();
   List<AccountSummary> _accounts = const [];
   bool _isLoading = true;
+  int _tick = 0; // changes on pull-to-refresh so Points reload too
   bool _sessionExpired = false;
   String? _error;
 
@@ -30,8 +31,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _fetchAccountDetails();
   }
 
-  Future<void> _fetchAccountDetails() async {
-    if (mounted) setState(() => _isLoading = true);
+  Future<void> _fetchAccountDetails({bool silent = false}) async {
+    if (mounted && !silent) setState(() => _isLoading = true);
     final res = await _apiService.getAccountSummaries(widget.phoneNumber);
     if (!mounted) return;
     setState(() {
@@ -52,7 +53,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final accounts = _accounts;
 
     return RefreshIndicator(
-      onRefresh: _fetchAccountDetails,
+      onRefresh: () {
+        _tick++;
+        return _fetchAccountDetails(silent: true);
+      },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(20),
@@ -60,7 +64,11 @@ class _HomeScreenState extends State<HomeScreen> {
           if (_sessionExpired) _expiredCard(),
           if (!_sessionExpired && accounts.isEmpty) _emptyCard(),
           for (final account in accounts) ...[
-            AccountCard(summary: account),
+            AccountCard(
+              key: ValueKey('${account.msisdn}#$_tick'),
+              summary: account,
+              onChanged: () => _fetchAccountDetails(silent: true),
+            ),
             const SizedBox(height: 16),
           ],
         ],

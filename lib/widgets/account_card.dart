@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import '../models/account_summary.dart';
 import '../theme.dart';
 import '../utils/format.dart';
+import 'points_section.dart';
 
 /// Big dark card: number, Balance, Minutes and Data (MB).
 class AccountCard extends StatelessWidget {
   final AccountSummary summary;
-  const AccountCard({super.key, required this.summary});
+
+  /// Called after points were exchanged, so the MB above can be refreshed.
+  final VoidCallback? onChanged;
+
+  const AccountCard({super.key, required this.summary, this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -122,6 +127,8 @@ class AccountCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          PointsSection(msisdn: s.msisdn, onExchanged: onChanged),
         ],
       ),
     );

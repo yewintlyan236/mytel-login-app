@@ -31,3 +31,21 @@ class AccountSummary {
     this.data,
   });
 }
+
+/// Loyalty points of one number (from the loyalty "inquiry" API).
+class PointsInfo {
+  final int points;
+  final int exchanged; // points already exchanged this month
+  final int monthlyLimit;
+  final String? rankName;
+
+  const PointsInfo({
+    required this.points,
+    required this.exchanged,
+    required this.monthlyLimit,
+    this.rankName,
+  });
+
+  int get remainingThisMonth =>
+      (monthlyLimit - exchanged).clamp(0, monthlyLimit);
+}

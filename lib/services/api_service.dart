@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/account_summary.dart';
@@ -89,6 +91,21 @@ class ApiService {
     if (s.startsWith('95') && s.length >= 11) s = s.substring(2);
     if (s.startsWith('0')) s = s.substring(1);
     return '+95$s';
+  }
+
+  /// +959675447420 / 9675447420 -> 09675447420
+  static String toLocal(String input) => '0${toMsisdn(input).substring(3)}';
+
+  /// Stable random id used as `requestId` for loyalty requests.
+  Future<String> _deviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    var id = prefs.getString('mytel_device_id');
+    if (id == null) {
+      final r = Random.secure();
+      id = List.generate(16, (_) => r.nextInt(16).toRadixString(16)).join();
+      await prefs.setString('mytel_device_id', id);
+    }
+    return id;
   }
 
   String _errorMessage(Object e) {
@@ -250,6 +267,84 @@ class ApiService {
     }).toList());
 
     return ApiResult(ok: true, data: summaries);
+  }
+
+  // ---------------------------------------------------------------- Points
+
+  static const int pointsPerExchange = 1000;
+  static const String exchangeRewardCode = 'DATA_2750MB';
+
+  Future<ApiResult<PointsInfo>> getPoints(String phoneNumber) async {
+    try {
+      final token = await getToken();
+      if (token == null) {
+        return const ApiResult(ok: false, unauthorized: true);
+      }
+
+      final response = await _dio.get(
+        '/loyalty/api/v3.1/customer/inquiry',
+        queryParameters: {'phoneNo': toLocal(phoneNumber)},
+        options: Options(headers: {'Accept-Language': 'EN'}),
+      );
+
+      final body = response.data;
+      if (body is Map &&
+          body['errorCode']?.toString() == '00000' &&
+          body['result'] is Map) {
+        final r = body['result'] as Map;
+        final ext = r['extendInfo'] is Map ? r['extendInfo'] as Map : const {};
+        int toInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
+        return ApiResult(
+          ok: true,
+          data: PointsInfo(
+            points: toInt(r['exchangePoints']),
+            exchanged: toInt(ext['exchanged']),
+            monthlyLimit: toInt(ext['currentLimit'] ?? ext['monthlyLimit']),
+            rankName: r['rankName']?.toString(),
+          ),
+        );
+      }
+      return ApiResult(
+          ok: false, message: body is Map ? body['message']?.toString() : null);
+    } catch (e) {
+      return ApiResult(
+        ok: false,
+        message: _errorMessage(e),
+        unauthorized: _isUnauthorized(e),
+      );
+    }
+  }
+
+  /// 1000 points -> 2750 MB data
+  Future<ApiResult<void>> exchangePointsForData(String phoneNumber) async {
+    try {
+      final token = await getToken();
+      if (token == null) {
+        return const ApiResult(ok: false, unauthorized: true);
+      }
+
+      final response = await _dio.post(
+        '/loyalty/api/v3.1/pack/exchange',
+        data: {
+          'requestId': await _deviceId(),
+          'requestTime': DateTime.now().millisecondsSinceEpoch,
+          'msisdn': toMsisdn(phoneNumber),
+          'rewardCode': exchangeRewardCode,
+        },
+        options: Options(headers: {'Accept-Language': 'EN'}),
+      );
+
+      final body = response.data;
+      final ok = body is Map && body['errorCode']?.toString() == '00000';
+      return ApiResult(
+          ok: ok, message: body is Map ? body['message']?.toString() : null);
+    } catch (e) {
+      return ApiResult(
+        ok: false,
+        message: _errorMessage(e),
+        unauthorized: _isUnauthorized(e),
+      );
+    }
   }
 
   // ---------------------------------------------------------------- YouTube
